@@ -1,249 +1,366 @@
 <template>
-  <div class="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
-    <div class="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6">
-      <h1 class="text-2xl font-bold text-center mb-6">海带病害智能检测与分析</h1>
+  <div class="kelp-detector">
+    <header>
+      <h1>海带病害图像分割与分析</h1>
+      <p v-if="!opencvReady" class="loading-status">
+        正在加载图像处理引擎 (OpenCV.js)，请稍候...
+      </p>
+      <p v-else class="ready-status">
+        引擎加载完毕，请上传图片进行分析。
+      </p>
+    </header>
 
-      <!-- 加载状态提示 -->
-      <div v-if="!isCvReady" class="text-center p-4 mb-4 bg-yellow-100 text-yellow-800 rounded-lg">
-        <p>正在加载图像处理引擎 (OpenCV.js)，请稍候...</p>
+    <div class="upload-section">
+      <div v-if="!originalImageUrl" class="drop-area" @dragover.prevent @drop.prevent="handleDrop">
+        <input type="file" id="fileInput" @change="handleFileChange" accept="image/png, image/jpeg, image/jpg" hidden>
+        <label for="fileInput" class="upload-button">上传文件</label>
+        <span>或拖拽到此处</span>
+        <small>支持 PNG, JPG, JPEG 格式</small>
       </div>
-
-      <!-- 图片上传区域 -->
-      <div class="mb-6">
-        <label for="file-upload" class="block text-sm font-medium text-gray-700 mb-2">上传图片进行分析</label>
-        <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
-          <div class="space-y-1 text-center">
-            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
-              <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <div class="flex text-sm text-gray-600">
-              <label for="file-upload" :class="['relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none', { 'opacity-50 cursor-not-allowed': !isCvReady }]">
-                <span>上传文件</span>
-                <input id="file-upload" name="file-upload" type="file" class="sr-only" @change="handleImageUpload" :disabled="!isCvReady || isProcessing" accept="image/png, image/jpeg, image/jpg">
-              </label>
-              <p class="pl-1">或拖拽到此处</p>
-            </div>
-            <p class="text-xs text-gray-500">支持 PNG, JPG, JPEG 格式</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- 处理中提示 -->
-      <div v-if="isProcessing" class="text-center p-4 text-gray-600">
-        <p>正在分析图片，请稍候...</p>
-      </div>
-
-      <!-- 结果展示区域 -->
-      <div v-if="originalImage" class="space-y-6">
-        <!-- 图片对比 -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <h2 class="text-lg font-semibold mb-2">原始图片</h2>
-            <img :src="originalImage" alt="Original Image" class="w-full h-auto rounded-lg shadow">
-          </div>
-          <div>
-            <h2 class="text-lg font-semibold mb-2">分割标注图片</h2>
-            <canvas ref="canvasOutput" class="w-full h-auto rounded-lg shadow"></canvas>
-          </div>
-        </div>
-
-        <!-- 分析报告 -->
-        <div v-if="analysisReport && diseasePercentage !== null" class="bg-gray-50 p-4 rounded-lg shadow">
-          <h2 class="text-lg font-semibold mb-3 border-b pb-2">检测分析报告</h2>
-          <div class="text-center mb-4">
-            <p class="text-sm text-gray-600">病害区域占比</p>
-            <p class="text-4xl font-bold" :class="{'text-red-600': diseasePercentage > 10, 'text-yellow-600': diseasePercentage > 0, 'text-green-600': diseasePercentage === 0}">
-              {{ diseasePercentage }}%
-            </p>
-          </div>
-          <div class="bg-white p-4 rounded">
-            <h3 class="font-semibold mb-2">详细报告：</h3>
-            <pre class="whitespace-pre-wrap text-sm text-gray-800 font-sans">{{ analysisReport }}</pre>
-          </div>
-        </div>
+      <div v-else class="re-upload-section">
+         <button @click="reset" class="re-upload-button">重新上传</button>
       </div>
     </div>
+
+    <div v-if="isProcessing" class="processing-status">
+      <p>正在处理图片，请稍候...</p>
+      <div class="spinner"></div>
+    </div>
+
+    <div v-if="originalImageUrl" class="results-grid">
+      <div class="image-card">
+        <h3>原始图片</h3>
+        <img :src="originalImageUrl" id="originalImage" alt="Original Kelp Image" @load="onImageLoad"/>
+      </div>
+      <div class="image-card">
+        <h3>分割后的图片</h3>
+        <canvas id="outputCanvas"></canvas>
+      </div>
+    </div>
+
+    <div v-if="diseasePercentage !== null" class="analysis-result">
+      <h2>分析结果</h2>
+      <p>
+        病害区域所占百分比：
+        <strong :class="percentageClass">{{ diseasePercentage.toFixed(2) }}%</strong>
+      </p>
+    </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import '@techstark/opencv-js';
-
-// --- 类型定义 ---
-// 明确告诉 TypeScript window 对象上会有一个 cv 属性
-interface Window {
-  cv: any;
-}
-declare let window: Window;
+import { ref, onMounted, computed } from 'vue';
+import type cv from 'opencv-js';
 
 // --- 响应式状态定义 ---
-const isCvReady = ref(false);
+const opencvReady = ref(false);
 const isProcessing = ref(false);
-const originalImage = ref<string | null>(null);
-const canvasOutput = ref<HTMLCanvasElement | null>(null);
+const originalImageUrl = ref<string | null>(null);
 const diseasePercentage = ref<number | null>(null);
-const analysisReport = ref<string | null>(null);
+const imageLoaded = ref(false); // 标记图片是否已加载到<img>标签
 
-// --- 生命周期钩子 ---
+// --- OpenCV.js 加载逻辑 ---
 onMounted(() => {
-  // 使用更可靠的轮询方式检查 OpenCV.js 是否加载完成
-  const checkCvReady = setInterval(() => {
-    // 确保 cv 对象及其核心函数都已准备就绪
-    if (window.cv && window.cv.imread) {
-      isCvReady.value = true;
+  const script = document.createElement('script');
+  script.src = '/opencv.js'; // 假设 opencv.js 在 public 目录下
+  script.async = true;
+  script.onload = () => {
+    // cv 在 window 对象上变为可用
+    (window as any).cv.onRuntimeInitialized = () => {
       console.log('OpenCV.js is ready.');
-      clearInterval(checkCvReady);
-    }
-  }, 100); // 每 100ms 检查一次
+      opencvReady.value = true;
+    };
+  };
+  document.body.appendChild(script);
 });
 
-// --- 方法定义 ---
-const handleImageUpload = (event: Event) => {
+// --- 文件处理 ---
+const handleFileChange = (event: Event) => {
   const target = event.target as HTMLInputElement;
-  if (!target.files || !target.files[0]) return;
-  const file = target.files[0];
-  
-  // 重置状态
-  originalImage.value = null;
-  diseasePercentage.value = null;
-  analysisReport.value = null;
-  if (canvasOutput.value) {
-    const ctx = canvasOutput.value.getContext('2d');
-    ctx?.clearRect(0, 0, canvasOutput.value.width, canvasOutput.value.height);
+  if (target.files && target.files[0]) {
+    const file = target.files[0];
+    originalImageUrl.value = URL.createObjectURL(file);
+    resetResults();
   }
-  
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    originalImage.value = e.target?.result as string;
-    setTimeout(() => processImage(file), 0);
-  };
-  reader.readAsDataURL(file);
 };
 
-const generateReport = (percentage: number, fileName?: string) => {
-    const now = new Date();
-    const detectionTime = now.toLocaleString('zh-CN');
-    const imageName = fileName || 'N/A';
-    let conclusion = '';
-    let suggestion = '';
-    if (percentage === 0) {
-        conclusion = '未检测到明显病变区域。';
-        suggestion = '植株健康，请继续保持当前养殖环境。';
-    } else if (percentage > 0 && percentage <= 10) {
-        conclusion = '轻度感染。';
-        suggestion = '建议进行隔离观察，并可考虑使用适量广谱杀菌剂进行预防性处理。注意水质和光照条件。';
-    } else if (percentage > 10 && percentage <= 30) {
-        conclusion = '中度感染。';
-        suggestion = '病变已扩散，建议立即隔离病株，并使用针对性的杀菌剂进行治疗。同时检查养殖密度和水体营养盐平衡。';
-    } else {
-        conclusion = '重度感染。';
-        suggestion = '病变非常严重，可能已无法治愈。建议立即移除并销毁病株，以防感染其他健康植株。对整个养殖环境进行彻底消毒。';
+const handleDrop = (event: DragEvent) => {
+  if (event.dataTransfer && event.dataTransfer.files[0]) {
+    const file = event.dataTransfer.files[0];
+     if (file.type.startsWith('image/')) {
+        originalImageUrl.value = URL.createObjectURL(file);
+        resetResults();
+     }
+  }
+};
+
+const onImageLoad = () => {
+  imageLoaded.value = true;
+  // 图片加载完成后自动开始处理
+  processImage();
+};
+
+const reset = () => {
+    originalImageUrl.value = null;
+    resetResults();
+}
+
+const resetResults = () => {
+    diseasePercentage.value = null;
+    imageLoaded.value = false;
+    const canvas = document.getElementById('outputCanvas') as HTMLCanvasElement;
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx?.clearRect(0, 0, canvas.width, canvas.height);
     }
-    analysisReport.value = `
-检测时间: ${detectionTime}
-原始文件: ${imageName}
----------------------------------
-[分析结论]
-${conclusion}
+}
 
-[处理建议]
-${suggestion}
----------------------------------
-    `.trim().replace(/^\s+/gm, '');
-};
 
-const processImage = (file: File) => {
-  if (!originalImage.value || !canvasOutput.value || !window.cv) {
-    console.error('依赖未就绪，无法处理图片。');
-    return;
-  }
+// --- 核心图像处理函数 ---
+const processImage = async () => {
+  if (!opencvReady.value || !imageLoaded.value) return;
 
   isProcessing.value = true;
-  const cv = window.cv;
-  const image = new Image();
-  image.src = originalImage.value;
-  image.onload = () => {
-    let src, hsv, diseasedMask, healthyMask, kernel, contours, hierarchy, outputImage;
-    let lightGreenLower, lightGreenUpper, darkGreenLower, darkGreenUpper; // 提前声明变量
-    
+  diseasePercentage.value = null;
+
+  // 使用setTimeout确保DOM更新，让加载状态显示出来
+  setTimeout(() => {
     try {
-      src = cv.imread(image);
-      hsv = new cv.Mat();
-      cv.cvtColor(src, hsv, cv.COLOR_RGB2HSV, 0);
+      const cv = (window as any).cv as typeof import('opencv-js');
+      const imgElement = document.getElementById('originalImage') as HTMLImageElement;
+      if (!imgElement) {
+          throw new Error("Cannot find the original image element.");
+      }
+      
+      const src = cv.imread(imgElement);
+      const hsv = new cv.Mat();
+      cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB); // 如果是jpg则用RGBA2RGB, png可能需要RGBA2RGB
+      cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
 
-      // 使用 Mat 对象作为颜色范围，以匹配类型定义
-      lightGreenLower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [29, 50, 51, 0]);
-      lightGreenUpper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [105, 211, 178, 255]);
-      darkGreenLower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 0, 0, 0]);
-      darkGreenUpper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [29, 254, 208, 255]);
-
-      diseasedMask = new cv.Mat();
-      healthyMask = new cv.Mat();
+      // 定义颜色范围 (与Python中的值一致)
+      // 病变部分 (浅绿)
+      const lightGreenLower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [29, 50, 51, 0]);
+      const lightGreenUpper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [105, 211, 178, 255]);
+      // 健康部分 (深绿)
+      const darkGreenLower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 0, 0, 0]);
+      const darkGreenUpper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [29, 254, 208, 255]);
+      
+      const diseasedMask = new cv.Mat();
+      const healthyMask = new cv.Mat();
+      
       cv.inRange(hsv, lightGreenLower, lightGreenUpper, diseasedMask);
       cv.inRange(hsv, darkGreenLower, darkGreenUpper, healthyMask);
 
+      // 形态学操作
+      const kernel = cv.Mat.ones(5, 5, cv.CV_8U);
+      const anchor = new cv.Point(-1, -1);
+      cv.morphologyEx(diseasedMask, diseasedMask, cv.MORPH_OPEN, kernel, anchor, 1);
+      cv.morphologyEx(diseasedMask, diseasedMask, cv.MORPH_CLOSE, kernel, anchor, 1);
+
+      // 计算面积和百分比
       const diseasedArea = cv.countNonZero(diseasedMask);
-      const healthyArea = cv.countNonozero(healthyMask);
+      const healthyArea = cv.countNonZero(healthyMask);
       const totalArea = diseasedArea + healthyArea;
+      
+      diseasePercentage.value = totalArea > 0 ? (diseasedArea / totalArea) * 100 : 0;
 
-      if (totalArea > 0) {
-        const percentage = (diseasedArea / totalArea) * 100;
-        diseasePercentage.value = parseFloat(percentage.toFixed(2));
-      } else {
-        diseasePercentage.value = 0;
-      }
-      generateReport(diseasePercentage.value, file.name);
-
-      kernel = cv.Mat.ones(5, 5, cv.CV_8U);
-      cv.morphologyEx(diseasedMask, diseasedMask, cv.MORPH_OPEN, kernel);
-      cv.morphologyEx(diseasedMask, diseasedMask, cv.MORPH_CLOSE, kernel);
-
-      outputImage = src.clone();
-      contours = new cv.MatVector();
-      hierarchy = new cv.Mat();
+      // 在输出图像上绘制轮廓
+      const outputImage = src.clone();
+      const contours = new cv.MatVector();
+      const hierarchy = new cv.Mat();
       cv.findContours(diseasedMask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-      const redColor = new cv.Scalar(255, 0, 0, 255);
+      
+      const redColor = new cv.Scalar(255, 0, 0, 255); // 红色
       for (let i = 0; i < contours.size(); ++i) {
         cv.drawContours(outputImage, contours, i, redColor, 2, cv.LINE_8, hierarchy, 100);
       }
-      
-      if (canvasOutput.value) {
-        cv.imshow(canvasOutput.value, outputImage);
-      }
 
-    } catch (error: any) {
-      console.error('图像处理时发生错误:', error);
-      analysisReport.value = "图像处理失败，请检查图片格式或联系技术支持。";
+      // 显示结果
+      cv.imshow('outputCanvas', outputImage);
+
+      // 释放内存
+      src.delete();
+      hsv.delete();
+      lightGreenLower.delete();
+      lightGreenUpper.delete();
+      darkGreenLower.delete();
+      darkGreenUpper.delete();
+      diseasedMask.delete();
+      healthyMask.delete();
+      kernel.delete();
+      contours.delete();
+      hierarchy.delete();
+      outputImage.delete();
+
+    } catch (error) {
+      console.error("Image processing error:", error);
+      alert("图像处理失败，请检查控制台获取更多信息。");
     } finally {
-      // 确保所有 OpenCV Mat 对象都被释放
-      src?.delete();
-      hsv?.delete();
-      diseasedMask?.delete();
-      healthyMask?.delete();
-      kernel?.delete();
-      contours?.delete();
-      hierarchy?.delete();
-      outputImage?.delete();
-      lightGreenLower?.delete();
-      lightGreenUpper?.delete();
-      darkGreenLower?.delete();
-      darkGreenUpper?.delete();
-      
       isProcessing.value = false;
     }
-  };
-  image.onerror = (err: any) => {
-    console.error("图片加载失败。", err);
-    isProcessing.value = false;
-  }
+  }, 100); // 100ms延迟
 };
+
+// --- 计算属性，用于动态改变百分比颜色 ---
+const percentageClass = computed(() => {
+  if (diseasePercentage.value === null) return '';
+  if (diseasePercentage.value > 25) return 'high';
+  if (diseasePercentage.value > 10) return 'medium';
+  return 'low';
+});
+
 </script>
 
 <style>
-/* 添加一个简单的 pre 标签样式以获得更好的报告可读性 */
-pre {
-  font-family: 'Courier New', Courier, monospace;
-  line-height: 1.6;
+:root {
+  --primary-color: #4CAF50;
+  --secondary-color: #f4f4f9;
+  --border-color: #ddd;
+  --text-color: #333;
+  --danger-color: #f44336;
+  --warning-color: #ff9800;
+  --safe-color: #4CAF50;
 }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--secondary-color);
+  color: var(--text-color);
+  margin: 0;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.kelp-detector {
+  width: 100%;
+  max-width: 1200px;
+  text-align: center;
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+header h1 {
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+header p {
+  margin-top: 0;
+  font-style: italic;
+}
+
+.loading-status { color: var(--warning-color); }
+.ready-status { color: var(--safe-color); }
+
+.upload-section {
+  margin: 2rem 0;
+}
+
+.drop-area {
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 2rem;
+  transition: background-color 0.3s, border-color 0.3s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.drop-area:hover {
+  border-color: var(--primary-color);
+  background-color: #f9f9f9;
+}
+
+.upload-button, .re-upload-button {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s;
+}
+.upload-button:hover, .re-upload-button:hover {
+  background-color: #45a049;
+}
+
+.re-upload-section {
+  margin-bottom: 1rem;
+}
+
+.processing-status {
+  margin: 2rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.spinner {
+  border: 4px solid rgba(0,0,0,0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: var(--primary-color);
+  animation: spin 1s ease infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.image-card {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  background-color: #fdfdfd;
+}
+
+.image-card h3 {
+  margin-top: 0;
+}
+
+.image-card img, .image-card canvas {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.analysis-result {
+  margin-top: 2.5rem;
+  padding: 1.5rem;
+  background-color: var(--secondary-color);
+  border-radius: 8px;
+}
+
+.analysis-result h2 {
+  margin-top: 0;
+}
+.analysis-result p {
+  font-size: 1.2rem;
+}
+.analysis-result strong {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.analysis-result .high { color: var(--danger-color); }
+.analysis-result .medium { color: var(--warning-color); }
+.analysis-result .low { color: var(--safe-color); }
 </style>
