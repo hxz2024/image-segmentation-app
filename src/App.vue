@@ -51,7 +51,6 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import type cv from 'opencv-js';
 
 // --- 响应式状态定义 ---
 const opencvReady = ref(false);
