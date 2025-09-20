@@ -126,7 +126,7 @@ const processImage = async () => {
   // 使用setTimeout确保DOM更新，让加载状态显示出来
   setTimeout(() => {
     try {
-      const cv = (window as any).cv as typeof import('opencv-js');
+      const cv = (window as any).cv as typeof import('opencv.js');
       const imgElement = document.getElementById('originalImage') as HTMLImageElement;
       if (!imgElement) {
           throw new Error("Cannot find the original image element.");
